@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#070b16" />
+  <title>Helix Lab — Khám phá DNA và RNA</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: "#070b16",
+            panel: "#111827",
+            cyanGlow: "#54e8ff",
+            violetGlow: "#a78bfa",
+          },
+          fontFamily: {
+            sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+          },
+        },
+      },
+    };
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    * { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: #e5eefb;
+      background:
+        radial-gradient(ellipse at 12% 0%, rgba(26, 78, 118, .22), transparent 38%),
+        radial-gradient(ellipse at 90% 25%, rgba(90, 43, 134, .18), transparent 34%),
+        #070b16;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    .glass {
+      background: rgba(15, 23, 42, .72);
+      border: 1px solid rgba(148, 163, 184, .14);
+      backdrop-filter: blur(18px);
+    }
+    .glow-text { text-shadow: 0 0 28px rgba(84, 232, 255, .35); }
+    .grid-bg {
+      background-image: linear-gradient(rgba(148,163,184,.045) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(148,163,184,.045) 1px, transparent 1px);
+      background-size: 34px 34px;
+    }
+    .model-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+    .model-canvas:active { cursor: grabbing; }
+    .pill { border: 1px solid rgba(148,163,184,.18); background: rgba(15,23,42,.65); }
+    .base-button { transition: transform .18s ease, box-shadow .18s ease; }
+    .base-button:hover { transform: translateY(-2px); }
+    .answer-button { transition: all .2s ease; }
+    .answer-button:hover { border-color: rgba(84,232,255,.55); background: rgba(84,232,255,.08); }
+    .section-anchor { scroll-margin-top: 88px; }
+    ::selection { background: rgba(84,232,255,.3); }
+  </style>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useEffect, useRef, useState } = React;
+
+    const BASES = {
+      A: {
+        name: "Adenine", color: "#ff718b", family: "Purine",
+        pairDNA: "T", pairRNA: "U",
+        structure: "Base nitơ purine có hai vòng liên kết với đường pentose và nhóm phosphate để tạo thành nucleotide.",
+        role: "Trong DNA, A bắt cặp với T bằng 2 liên kết hydro. Trong RNA, A bắt cặp với U.",
+        fact: "Adenine cũng là thành phần của ATP — phân tử vận chuyển năng lượng phổ biến trong tế bào."
+      },
+      T: {
+        name: "Thymine", color: "#ffc857", family: "Pyrimidine",
+        pairDNA: "A", pairRNA: "—",
+        structure: "Base nitơ pyrimidine có một vòng. Thymine thường có trong DNA, không phải base tiêu chuẩn của RNA.",
+        role: "Trong DNA, T bắt cặp với A bằng 2 liên kết hydro, góp phần giữ ổn định cấu trúc xoắn kép.",
+        fact: "Khi phiên mã, RNA dùng uracil (U) thay cho thymine (T)."
+      },
+      G: {
+        name: "Guanine", color: "#70e1a1", family: "Purine",
+        pairDNA: "C", pairRNA: "C",
+        structure: "Base nitơ purine có hai vòng. Guanine liên kết với đường pentose và nhóm phosphate trong nucleotide.",
+        role: "G bắt cặp với C bằng 3 liên kết hydro trong DNA và các vùng RNA bắt cặp bổ sung.",
+        fact: "Cặp G–C có ba liên kết hydro, nhiều hơn cặp A–T trong DNA."
+      },
+      C: {
+        name: "Cytosine", color: "#60a5fa", family: "Pyrimidine",
+        pairDNA: "G", pairRNA: "G",
+        structure: "Base nitơ pyrimidine có một vòng và là một trong bốn base của DNA, đồng thời cũng có trong RNA.",
+        role: "C bắt cặp với G bằng 3 liên kết hydro, theo nguyên tắc bổ sung.",
+        fact: "Trình tự các base mang thông tin di truyền; cytosine là một phần của “bảng chữ cái” đó."
+      },
+      U: {
+        name: "Uracil", color: "#c084fc", family: "Pyrimidine",
+        pairDNA: "—", pairRNA: "A",
+        structure: "Base nitơ pyrimidine có một vòng. Uracil xuất hiện trong RNA thay cho thymine của DNA.",
+        role: "Trong RNA, U có thể bắt cặp với A bằng 2 liên kết hydro.",
+        fact: "mRNA dùng U trong các codon để truyền thông tin từ DNA đến ribosome."
+      },
+    };
+
+    const DNA_SEQUENCE = "ATGCCGTAACTGACGTTAGC";
+    const RNA_SEQUENCE = "AUGCCGUUACGACGUAAGC";
+
+    function SectionTitle({ eyebrow, title, description }) {
+      return (
+        <div className="mb-8 max-w-2xl">
+          <div className="mb-3 text-xs font-bold uppercase tracking-[.24em] text-cyan-300">{eyebrow}</div>
+          <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">{title}</h2>
+          {description && <p className="mt-3 leading-7 text-slate-400">{description}</p>}
+        </div>
+      );
+    }
+
+    function MoleculeCanvas({ mode, onSelect }) {
+      const mountRef = useRef(null);
+      const selectRef = useRef(onSelect);
+      useEffect(() => { selectRef.current = onSelect; }, [onSelect]);
+
+      useEffect(() => {
+        const mount = mountRef.current;
+        if (!mount || !window.THREE) return;
+
+        const THREE = window.THREE;
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color("#0a1020");
+        scene.fog = new THREE.Fog("#0a1020", 11, 25);
+
+        const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+        camera.position.set(0, 0, 10.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.setClearColor("#0a1020", 1);
+        mount.appendChild(renderer.domElement);
+        renderer.domElement.className = "model-canvas";
+
+        scene.add(new THREE.AmbientLight(0xb9d7ff, 1.25));
+        const keyLight = new THREE.PointLight(0x54e8ff, 75, 30);
+        keyLight.position.set(4, 4, 6);
+        scene.add(keyLight);
+        const violetLight = new THREE.PointLight(0xa78bfa, 52, 25);
+        violetLight.position.set(-5, -2, -3);
+        scene.add(violetLight);
+
+        const molecule = new THREE.Group();
+        scene.add(molecule);
+        const pickables = [];
+
+        // Các hạt nền tạo cảm giác không gian phòng thí nghiệm.
+        const starPositions = [];
+        for (let i = 0; i < 500; i++) {
+          starPositions.push((Math.random() - .5) * 28, (Math.random() - .5) * 20, (Math.random() - .5) * 18);
+        }
+        const starGeometry = new THREE.BufferGeometry();
+        starGeometry.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
+        const stars = new THREE.Points(
+          starGeometry,
+          new THREE.PointsMaterial({ color: 0x7b9ac1, size: .025, transparent: true, opacity: .65 })
+        );
+        scene.add(stars);
+
+        const beadGeometry = new THREE.SphereGeometry(.19, 20, 20);
+        const baseGeometry = new THREE.SphereGeometry(.135, 18, 18);
+        const backboneColors = mode === "DNA" ? ["#42d9ee", "#a78bfa"] : ["#42d9ee"];
+        const sequence = mode === "DNA" ? DNA_SEQUENCE : RNA_SEQUENCE;
+        const count = sequence.length;
+        const step = .37;
+        const centerY = ((count - 1) * step) / 2;
+
+        function makeMaterial(color, emissive = color) {
+          return new THREE.MeshStandardMaterial({
+            color,
+            emissive,
+            emissiveIntensity: .28,
+            roughness: .34,
+            metalness: .12,
+          });
+        }
+
+        function addConnector(a, b, color, radius = .045, opacity = 1) {
+          const start = new THREE.Vector3(...a);
+          const end = new THREE.Vector3(...b);
+          const direction = new THREE.Vector3().subVectors(end, start);
+          const mesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(radius, radius, direction.length(), 8),
+            new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: .16, transparent: opacity < 1, opacity })
+          );
+          mesh.position.copy(start).add(end).multiplyScalar(.5);
+          mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+          molecule.add(mesh);
+        }
+
+        const strands = mode === "DNA" ? 2 : 1;
+        const previousBackbones = Array.from({ length: strands }, () => null);
+
+        for (let i = 0; i < count; i++) {
+          const angle = i * .72;
+          const y = i * step - centerY;
+          const base = sequence[i];
+          const radius = 1.28;
+          const strandA = [Math.cos(angle) * radius, y, Math.sin(angle) * radius];
+          const baseA = [Math.cos(angle) * .48, y, Math.sin(angle) * .48];
+
+          const beadA = new THREE.Mesh(beadGeometry, makeMaterial(backboneColors[0]));
+          beadA.position.set(...strandA);
+          molecule.add(beadA);
+
+          const baseMeshA = new THREE.Mesh(baseGeometry, makeMaterial(BASES[base].color));
+          baseMeshA.position.set(...baseA);
+          baseMeshA.userData = { type: "base", base };
+          molecule.add(baseMeshA);
+          pickables.push(baseMeshA);
+          addConnector(strandA, baseA, BASES[base].color, .035);
+
+          if (previousBackbones[0]) addConnector(previousBackbones[0], strandA, backboneColors[0], .055);
+          previousBackbones[0] = strandA;
+
+          if (mode === "DNA") {
+            const strandB = [Math.cos(angle + Math.PI) * radius, y, Math.sin(angle + Math.PI) * radius];
+            const baseB = [Math.cos(angle + Math.PI) * .48, y, Math.sin(angle + Math.PI) * .48];
+            const pairedBase = ({ A: "T", T: "A", G: "C", C: "G" })[base];
+
+            const beadB = new THREE.Mesh(beadGeometry, makeMaterial(backboneColors[1]));
+            beadB.position.set(...strandB);
+            molecule.add(beadB);
+
+            const baseMeshB = new THREE.Mesh(baseGeometry, makeMaterial(BASES[pairedBase].color));
+            baseMeshB.position.set(...baseB);
+            baseMeshB.userData = { type: "base", base: pairedBase };
+            molecule.add(baseMeshB);
+            pickables.push(baseMeshB);
+            addConnector(strandB, baseB, BASES[pairedBase].color, .035);
+            addConnector(baseA, baseB, 0x7183a6, .025, .72);
+
+            if (previousBackbones[1]) addConnector(previousBackbones[1], strandB, backboneColors[1], .055);
+            previousBackbones[1] = strandB;
+          }
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        let pointerDown = null;
+        let dragging = false;
+
+        function resize() {
+          const width = Math.max(1, mount.clientWidth);
+          const height = Math.max(1, mount.clientHeight);
+          renderer.setSize(width, height, false);
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+        }
+
+        const observer = new ResizeObserver(resize);
+        observer.observe(mount);
+        resize();
+
+        function onPointerDown(event) {
+          pointerDown = { x: event.clientX, y: event.clientY };
+          dragging = false;
+          renderer.domElement.setPointerCapture?.(event.pointerId);
+        }
+
+        function onPointerMove(event) {
+          if (!pointerDown) return;
+          const dx = event.clientX - pointerDown.x;
+          const dy = event.clientY - pointerDown.y;
+          if (Math.abs(dx) + Math.abs(dy) > 3) dragging = true;
+          if (dragging) {
+            molecule.rotation.y += dx * .008;
+            molecule.rotation.x += dy * .008;
+            molecule.rotation.x = Math.max(-1.35, Math.min(1.35, molecule.rotation.x));
+            pointerDown = { x: event.clientX, y: event.clientY };
+          }
+        }
+
+        function onPointerUp(event) {
+          if (pointerDown && !dragging) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(pointer, camera);
+            const hits = raycaster.intersectObjects(pickables, false);
+            if (hits.length) selectRef.current({ type: "base", base: hits[0].object.userData.base });
+            else selectRef.current({ type: "molecule", mode });
+          }
+          pointerDown = null;
+        }
+
+        function onWheel(event) {
+          event.preventDefault();
+          camera.position.z = Math.max(5.5, Math.min(16, camera.position.z + event.deltaY * .008));
+        }
+
+        renderer.domElement.addEventListener("pointerdown", onPointerDown);
+        renderer.domElement.addEventListener("pointermove", onPointerMove);
+        renderer.domElement.addEventListener("pointerup", onPointerUp);
+        renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
+
+        let frame;
+        function animate() {
+          frame = requestAnimationFrame(animate);
+          renderer.render(scene, camera);
+        }
+        animate();
+
+        return () => {
+          cancelAnimationFrame(frame);
+          observer.disconnect();
+          renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+          renderer.domElement.removeEventListener("pointermove", onPointerMove);
+          renderer.domElement.removeEventListener("pointerup", onPointerUp);
+          renderer.domElement.removeEventListener("wheel", onWheel);
+          scene.traverse((object) => {
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+              if (Array.isArray(object.material)) object.material.forEach((m) => m.dispose());
+              else object.material.dispose();
+            }
+          });
+          renderer.dispose();
+          mount.removeChild(renderer.domElement);
+        };
+      }, [mode]);
+
+      return <div ref={mountRef} className="h-full min-h-[350px] w-full overflow-hidden rounded-2xl" aria-label={`Mô hình ${mode} 3D`} />;
+    }
+
+    function App() {
+      const [mode, setMode] = useState("DNA");
+      const [selected, setSelected] = useState({ type: "molecule", mode: "DNA" });
+      const [sequenceInput, setSequenceInput] = useState("ATGCCGTAA");
+      const [simulation, setSimulation] = useState(null);
+      const [quizIndex, setQuizIndex] = useState(0);
+      const [quizAnswer, setQuizAnswer] = useState(null);
+      const [score, setScore] = useState(0);
+
+      function changeMode(nextMode) {
+        setMode(nextMode);
+        setSelected({ type: "molecule", mode: nextMode });
+      }
+
+      const detail = selected.type === "base" ? BASES[selected.base] : null;
+      const modelTitle = selected.type === "base"
+        ? `${selected.base} · ${detail.name}`
+        : selected.mode === "RNA" ? "RNA — mạch đơn" : "DNA — xoắn kép";
+
+      const quiz = [
+        {
+          question: "Base nào bắt cặp với adenine trong DNA?",
+          answers: ["Guanine (G)", "Thymine (T)", "Cytosine (C)", "Uracil (U)"],
+          correct: 1,
+          explain: "Trong DNA, adenine (A) bắt cặp với thymine (T). Trong RNA, A thường bắt cặp với U."
+        },
+        {
+          question: "Đường có trong RNA là loại nào?",
+          answers: ["Deoxyribose", "Glucose", "Ribose", "Fructose"],
+          correct: 2,
+          explain: "RNA chứa đường ribose; DNA chứa deoxyribose."
+        },
+        {
+          question: "Quá trình nào tạo RNA dựa trên khuôn DNA?",
+          answers: ["Dịch mã", "Phiên mã", "Nhân đôi", "Đột biến"],
+          correct: 1,
+          explain: "Phiên mã sử dụng một mạch DNA làm khuôn để tổng hợp RNA."
+        },
+        {
+          question: "Ribosome đọc mRNA theo nhóm mấy nucleotide?",
+          answers: ["1", "2", "3", "4"],
+          correct: 2,
+          explain: "Mỗi codon gồm ba nucleotide và thường quy định một amino acid hoặc tín hiệu kết thúc."
+        },
+      ];
+
+      function answerQuiz(index) {
+        if (quizAnswer !== null) return;
+        setQuizAnswer(index);
+        if (index === quiz[quizIndex].correct) setScore((value) => value + 1);
+      }
+
+      function nextQuestion() {
+        setQuizIndex((value) => (value + 1) % quiz.length);
+        setQuizAnswer(null);
+      }
+
+      function runSimulation() {
+        const dna = sequenceInput.toUpperCase().replace(/[^ATGC]/g, "");
+        if (!dna) {
+          setSimulation({ error: "Hãy nhập trình tự chỉ gồm các ký tự A, T, G, C." });
+          return;
+        }
+
+        const rna = dna.replace(/T/g, "U");
+        const codonTable = {
+          AUG: "Met", UUU: "Phe", UUC: "Phe", UUA: "Leu", UUG: "Leu",
+          UCU: "Ser", UCC: "Ser", UCA: "Ser", UCG: "Ser",
+          UAU: "Tyr", UAC: "Tyr", UAA: "STOP", UAG: "STOP",
+          UGU: "Cys", UGC: "Cys", UGA: "STOP", UGG: "Trp",
+          CUU: "Leu", CUC: "Leu", CUA: "Leu", CUG: "Leu",
+          CCU: "Pro", CCC: "Pro", CCA: "Pro", CCG: "Pro",
+          CAU: "His", CAC: "His", CAA: "Gln", CAG: "Gln",
+          CGU: "Arg", CGC: "Arg", CGA: "Arg", CGG: "Arg",
+          AUU: "Ile", AUC: "Ile", AUA: "Ile", AAG: "Lys",
+          ACU: "Thr", ACC: "Thr", ACA: "Thr", ACG: "Thr",
+          AAU: "Asn", AAC: "Asn", AAA: "Lys", AGU: "Ser",
+          AGC: "Ser", AGA: "Arg", AGG: "Arg",
+          GUU: "Val", GUC: "Val", GUA: "Val", GUG: "Val",
+          GCU: "Ala", GCC: "Ala", GCA: "Ala", GCG: "Ala",
+          GAU: "Asp", GAC: "Asp", GAA: "Glu", GAG: "Glu",
+          GGU: "Gly", GGC: "Gly", GGA: "Gly", GGG: "Gly",
+        };
+
+        const codons = rna.match(/.{1,3}/g) || [];
+        const amino = codons
+          .filter((codon) => codon.length === 3)
+          .map((codon) => `${codon} → ${codonTable[codon] || "?"}`);
+        setSimulation({ dna, rna, codons, amino });
+      }
+
+      return (
+        <div>
+          <header className="fixed top-0 z-50 w-full border-b border-white/10 bg-[#070b16]/85 backdrop-blur-xl">
+            <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+              <a href="#home" className="flex items-center gap-2 font-extrabold tracking-tight text-white">
+                <span className="grid h-9 w-9 place-items-center rounded-xl bg-cyan-400/10 text-cyan-300">⌁</span>
+                HELIX <span className="text-cyan-300">LAB</span>
+              </a>
+              <div className="hidden items-center gap-6 text-sm text-slate-300 lg:flex">
+                <a className="hover:text-cyan-300" href="#home">Trang chủ</a>
+                <a className="hover:text-cyan-300" href="#explore">Khám phá</a>
+                <a className="hover:text-cyan-300" href="#compare">So sánh</a>
+                <a className="hover:text-cyan-300" href="#simulation">Mô phỏng</a>
+                <a className="hover:text-cyan-300" href="#quiz">Quiz</a>
+              </div>
+              <a href="#explore" className="rounded-full border border-cyan-300/30 px-4 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-300/10">
+                Vào phòng lab ↗
+              </a>
+            </nav>
+          </header>
+
+          <main>
+            <section id="home" className="section-anchor grid-bg relative overflow-hidden px-4 pb-16 pt-32 sm:px-6 sm:pb-24 sm:pt-40">
+              <div className="pointer-events-none absolute left-1/2 top-24 h-80 w-80 -translate-x-1/2 rounded-full bg-cyan-400/10 blur-[100px]" />
+              <div className="relative mx-auto max-w-7xl">
+                <div className="mx-auto max-w-4xl text-center">
+                  <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/5 px-4 py-2 text-xs font-semibold tracking-wide text-cyan-200">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                    PHÒNG THÍ NGHIỆM DI TRUYỀN HỌC TƯƠNG TÁC
+                  </div>
+                  <h1 className="glow-text text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
+                    Khám phá <span className="bg-gradient-to-r from-cyan-300 to-violet-400 bg-clip-text text-transparent">DNA</span><br className="hidden sm:block" /> và RNA
+                  </h1>
+                  <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
+                    Bước vào thế giới phân tử của sự sống. Xoay mô hình 3D, tìm hiểu nucleotide và khám phá cách thông tin di truyền trở thành protein.
+                  </p>
+                  <div className="mt-8 flex flex-wrap justify-center gap-3">
+                    <a href="#explore" className="rounded-xl bg-cyan-300 px-6 py-3 font-bold text-slate-950 shadow-lg shadow-cyan-500/20 hover:bg-cyan-200">Bắt đầu khám phá <span aria-hidden="true">→</span></a>
+                    <a href="#simulation" className="rounded-xl border border-white/15 bg-white/5 px-6 py-3 font-semibold text-white hover:bg-white/10">Thử mô phỏng</a>
+                  </div>
+                </div>
+
+                <div className="mx-auto mt-14 grid max-w-4xl grid-cols-3 gap-3 sm:gap-5">
+                  {[
+                    ["01", "Cấu trúc phân tử"],
+                    ["02", "Phiên mã & dịch mã"],
+                    ["03", "Tương tác trực tiếp"],
+                  ].map(([number, text]) => (
+                    <div key={number} className="glass rounded-2xl p-4 text-center sm:p-5">
+                      <div className="text-xs font-bold tracking-widest text-cyan-300">{number}</div>
+                      <div className="mt-2 text-xs font-semibold text-slate-200 sm:text-sm">{text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section id="explore" className="section-anchor mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24">
+              <SectionTitle
+                eyebrow="Mô hình phân tử 3D"
+                title="Chạm vào cấu trúc sự sống"
+                description="Chọn DNA hoặc RNA, kéo chuột để xoay, cuộn để phóng to và nhấp vào nucleotide trong mô hình để xem thông tin."
+              />
+              <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
+                <div className="glass overflow-hidden rounded-3xl">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-6">
+                    <div className="flex gap-2">
+                      {["DNA", "RNA"].map((item) => (
+                        <button key={item} onClick={() => changeMode(item)}
+                          className={`rounded-lg px-4 py-2 text-sm font-bold transition ${mode === item ? "bg-cyan-300 text-slate-950" : "bg-white/5 text-slate-300 hover:bg-white/10"}`}>
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs text-slate-500">Kéo để xoay · Cuộn để zoom · Nhấp nucleotide</span>
+                  </div>
+                  <div className="h-[390px] sm:h-[500px]">
+                    <MoleculeCanvas mode={mode} onSelect={setSelected} />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 border-t border-white/10 px-4 py-4 sm:px-6">
+                    <span className="mr-1 text-xs text-slate-500">Chọn base:</span>
+                    {(mode === "DNA" ? ["A", "T", "G", "C"] : ["A", "U", "G", "C"]).map((base) => (
+                      <button key={base} onClick={() => setSelected({ type: "base", base })}
+                        className="base-button rounded-lg px-3 py-1.5 text-sm font-extrabold"
+                        style={{ color: BASES[base].color, background: `${BASES[base].color}18`, border: `1px solid ${BASES[base].color}55` }}>
+                        {base}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <aside className="glass rounded-3xl p-5 sm:p-7">
+                  <div className="text-xs font-bold uppercase tracking-[.2em] text-violet-300">Bảng thông tin</div>
+                  <h3 className="mt-3 text-2xl font-extrabold text-white">{modelTitle}</h3>
+                  {detail ? (
+                    <div className="mt-5 space-y-5">
+                      <div className="flex flex-wrap gap-2">
+                        <span className="pill rounded-full px-3 py-1 text-xs text-slate-300">{detail.family}</span>
+                        <span className="pill rounded-full px-3 py-1 text-xs text-slate-300">
+                          Bắt cặp DNA: {detail.pairDNA} · RNA: {detail.pairRNA}
+                        </span>
+                      </div>
+                      <InfoBlock title="Cấu trúc" text={detail.structure} />
+                      <InfoBlock title="Vai trò sinh học" text={detail.role} />
+                      <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/5 p-4">
+                        <div className="mb-1 text-xs font-bold text-cyan-200">Bạn có biết?</div>
+                        <p className="text-sm leading-6 text-slate-300">{detail.fact}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-5 space-y-5">
+                      <p className="leading-7 text-slate-400">
+                        {mode === "DNA"
+                          ? "DNA thường gồm hai mạch polynucleotide chạy ngược chiều nhau, xoắn quanh cùng một trục. Khung đường–phosphate nằm phía ngoài; các base hướng vào trong."
+                          : "RNA thường là một mạch polynucleotide. Mạch RNA có thể tự gấp cuộn và tạo các vùng bắt cặp bổ sung, từ đó hình thành cấu trúc đa dạng."}
+                      </p>
+                      <InfoBlock title="Thành phần nucleotide" text={mode === "DNA"
+                        ? "Mỗi nucleotide gồm đường deoxyribose, nhóm phosphate và một base nitơ: A, T, G hoặc C."
+                        : "Mỗi nucleotide gồm đường ribose, nhóm phosphate và một base nitơ: A, U, G hoặc C."} />
+                      <InfoBlock title="Vai trò" text={mode === "DNA"
+                        ? "DNA lưu trữ và truyền đạt thông tin di truyền. Trình tự nucleotide là một phần quan trọng của mã di truyền."
+                        : "RNA tham gia biểu hiện thông tin di truyền. mRNA mang thông tin, tRNA vận chuyển amino acid, còn rRNA là thành phần cấu trúc và chức năng của ribosome."} />
+                      <div className="rounded-2xl border border-violet-300/15 bg-violet-300/5 p-4 text-sm leading-6 text-slate-300">
+                        {mode === "DNA"
+                          ? "Nguyên tắc bổ sung: A–T và G–C. DNA có hai mạch bổ sung và ngược chiều nhau."
+                          : "RNA dùng U thay cho T. Một số vùng RNA có thể bắt cặp A–U và G–C."}
+                      </div>
+                    </div>
+                  )}
+                </aside>
+              </div>
+            </section>
+
+            <section id="compare" className="section-anchor border-y border-white/5 bg-white/[.02] px-4 py-16 sm:px-6 sm:py-24">
+              <div className="mx-auto max-w-7xl">
+                <SectionTitle eyebrow="Đặt cạnh nhau" title="DNA và RNA có gì khác?" description="Cả hai đều là acid nucleic tạo từ nucleotide, nhưng có cấu trúc và nhiệm vụ đặc trưng." />
+                <div className="glass overflow-hidden rounded-3xl">
+                  <div className="grid grid-cols-3 border-b border-white/10 bg-white/[.03]">
+                    <div className="p-4 text-xs font-bold uppercase tracking-wider text-slate-500 sm:p-5">Đặc điểm</div>
+                    <div className="p-4 text-sm font-extrabold text-cyan-300 sm:p-5">DNA</div>
+                    <div className="p-4 text-sm font-extrabold text-violet-300 sm:p-5">RNA</div>
+                  </div>
+                  {[
+                    ["Đường", "Deoxyribose", "Ribose"],
+                    ["Base đặc trưng", "Thymine (T)", "Uracil (U)"],
+                    ["Cấu trúc thường gặp", "Hai mạch xoắn kép", "Một mạch, có thể gấp cuộn"],
+                    ["Vai trò chính", "Lưu trữ thông tin di truyền", "Tham gia biểu hiện thông tin di truyền"],
+                    ["Một số dạng", "DNA nhân, DNA ti thể...", "mRNA, tRNA, rRNA và nhiều RNA khác"],
+                  ].map(([label, dna, rna]) => (
+                    <div key={label} className="grid grid-cols-3 border-b border-white/[.06] last:border-0">
+                      <div className="p-4 text-xs font-semibold text-slate-300 sm:p-5 sm:text-sm">{label}</div>
+                      <div className="p-4 text-xs leading-5 text-slate-400 sm:p-5 sm:text-sm">{dna}</div>
+                      <div className="p-4 text-xs leading-5 text-slate-400 sm:p-5 sm:text-sm">{rna}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-xs leading-5 text-slate-500">
+                  Lưu ý: đây là các đặc điểm khái quát; cấu trúc và vai trò cụ thể có thể khác nhau giữa các sinh vật và loại phân tử.
+                </p>
+              </div>
+            </section>
+
+            <section id="simulation" className="section-anchor mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24">
+              <SectionTitle eyebrow="Trung tâm mô phỏng" title="Từ trình tự đến protein" description="Nhập mạch mã hóa DNA 5′→3′. Mô phỏng thay T bằng U để tạo mRNA, rồi chia trình tự thành codon để minh họa dịch mã." />
+              <div className="grid gap-5 lg:grid-cols-2">
+                <div className="glass rounded-3xl p-5 sm:p-7">
+                  <label htmlFor="sequence" className="text-sm font-bold text-white">Trình tự DNA mạch mã hóa</label>
+                  <p className="mt-1 text-xs text-slate-500">Chỉ dùng A, T, G, C. Ví dụ: ATGCCGTAA</p>
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                    <input id="sequence" value={sequenceInput} onChange={(e) => setSequenceInput(e.target.value)}
+                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#080e1b] px-4 py-3 font-mono text-cyan-200 outline-none focus:border-cyan-300/50"
+                      placeholder="ATGCCGTAA" />
+                    <button onClick={runSimulation} className="rounded-xl bg-violet-400 px-5 py-3 font-bold text-slate-950 hover:bg-violet-300">Chạy mô phỏng</button>
+                  </div>
+                  <div className="mt-6 grid grid-cols-3 gap-2 text-center">
+                    {["DNA", "mRNA", "Codon"].map((item, index) => (
+                      <div key={item} className="rounded-xl border border-white/10 bg-white/[.03] p-3">
+                        <div className="text-xs text-slate-500">{item}</div>
+                        <div className="mt-1 text-lg text-cyan-300">{["🧬", "〰️", "▦"][index]}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="glass min-h-[270px] rounded-3xl p-5 sm:p-7">
+                  <div className="text-xs font-bold uppercase tracking-[.2em] text-cyan-300">Kết quả mô phỏng</div>
+                  {!simulation ? (
+                    <div className="mt-8 text-sm leading-7 text-slate-500">Nhập trình tự và chạy mô phỏng để xem mRNA, cách chia codon và amino acid minh họa.</div>
+                  ) : simulation.error ? (
+                    <div className="mt-6 rounded-xl border border-rose-400/20 bg-rose-400/5 p-4 text-sm text-rose-200">{simulation.error}</div>
+                  ) : (
+                    <div className="mt-5 space-y-4">
+                      <SequenceResult label="DNA mạch mã hóa (5′→3′)" value={simulation.dna} />
+                      <SequenceResult label="mRNA (5′→3′)" value={simulation.rna} />
+                      <div>
+                        <div className="mb-2 text-xs font-semibold text-slate-400">Codon và amino acid</div>
+                        <div className="flex flex-wrap gap-2">
+                          {simulation.codons.map((codon, index) => (
+                            <span key={index} className="rounded-lg border border-violet-300/20 bg-violet-300/5 px-2.5 py-1.5 font-mono text-xs text-violet-200">{codon}</span>
+                          ))}
+                        </div>
+                        {simulation.amino.length > 0 && <p className="mt-3 text-xs leading-5 text-slate-400">{simulation.amino.join(" · ")}</p>}
+                      </div>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Mô phỏng minh họa theo mạch mã hóa; dịch mã thực tế thường khởi đầu tại codon mở đầu và phụ thuộc khung đọc. “?” biểu thị codon chưa có trong bảng minh họa này.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <StepCard number="01" title="Phiên mã" text="RNA polymerase tổng hợp RNA dựa trên mạch khuôn DNA." />
+                <StepCard number="02" title="Xử lý & vận chuyển" text="Ở sinh vật nhân thực, mRNA thường được xử lý trước khi ra tế bào chất." />
+                <StepCard number="03" title="Dịch mã" text="Ribosome đọc codon mRNA và kết hợp amino acid thành chuỗi polypeptide." />
+              </div>
+            </section>
+
+            <section id="quiz" className="section-anchor border-y border-white/5 bg-white/[.02] px-4 py-16 sm:px-6 sm:py-24">
+              <div className="mx-auto max-w-4xl">
+                <SectionTitle eyebrow="Kiểm tra kiến thức" title="Bạn đã nắm được bao nhiêu?" description="Trả lời từng câu để củng cố kiến thức về DNA, RNA và biểu hiện gene." />
+                <div className="glass rounded-3xl p-5 sm:p-8">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="rounded-full bg-cyan-300/10 px-3 py-1.5 text-xs font-bold text-cyan-200">CÂU {quizIndex + 1} / {quiz.length}</span>
+                    <span className="text-sm text-slate-400">Điểm: <strong className="text-white">{score}</strong></span>
+                  </div>
+                  <h3 className="mt-6 text-xl font-bold text-white sm:text-2xl">{quiz[quizIndex].question}</h3>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {quiz[quizIndex].answers.map((answer, index) => {
+                      let style = "border-white/10 bg-white/[.025] text-slate-300";
+                      if (quizAnswer !== null && index === quiz[quizIndex].correct) style = "border-emerald-400/50 bg-emerald-400/10 text-emerald-200";
+                      else if (quizAnswer === index) style = "border-rose-400/50 bg-rose-400/10 text-rose-200";
+                      return (
+                        <button key={answer} onClick={() => answerQuiz(index)}
+                          className={`answer-button rounded-xl border p-4 text-left text-sm font-semibold ${style}`}>
+                          <span className="mr-3 text-xs text-slate-500">{String.fromCharCode(65 + index)}</span>{answer}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {quizAnswer !== null && (
+                    <div className="mt-5 flex flex-col justify-between gap-4 rounded-xl border border-cyan-300/15 bg-cyan-300/5 p-4 sm:flex-row sm:items-center">
+                      <p className="text-sm leading-6 text-slate-300">{quiz[quizIndex].explain}</p>
+                      <button onClick={nextQuestion} className="shrink-0 rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-slate-950">Câu tiếp theo →</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          </main>
+
+          <footer className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div><span className="font-bold text-slate-300">HELIX LAB</span> · Cùng khám phá ngôn ngữ của sự sống.</div>
+            <a href="#home" className="hover:text-cyan-300">Trở về đầu trang ↑</a>
+          </footer>
+        </div>
+      );
+    }
+
+    function InfoBlock({ title, text }) {
+      return (
+        <div>
+          <h4 className="mb-1 text-sm font-bold text-slate-200">{title}</h4>
+          <p className="text-sm leading-6 text-slate-400">{text}</p>
+        </div>
+      );
+    }
+
+    function SequenceResult({ label, value }) {
+      return (
+        <div>
+          <div className="mb-1 text-xs font-semibold text-slate-400">{label}</div>
+          <div className="break-all rounded-lg border border-white/10 bg-[#080e1b] px-3 py-2 font-mono text-sm tracking-wider text-cyan-200">{value}</div>
+        </div>
+      );
+    }
+
+    function StepCard({ number, title, text }) {
+      return (
+        <div className="glass rounded-2xl p-4">
+          <div className="text-xs font-bold tracking-widest text-violet-300">{number}</div>
+          <h3 className="mt-2 font-bold text-white">{title}</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-400">{text}</p>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
